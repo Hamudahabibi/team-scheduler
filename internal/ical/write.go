@@ -53,27 +53,28 @@ func Write(w io.Writer, name string, events []ExportEvent, now time.Time) error 
 }
 
 // writeFolded пишет строку, перенося её по 75 байт (RFC 5545, раздел 3.1).
-// Переносы не разрывают многобайтовые символы UTF-8.
+// Переносы не разрывают многобайтовые символы UTF-8. Ошибки записи
+// bufio.Writer запоминает и возвращает из Flush, поэтому здесь они не проверяются.
 func writeFolded(w *bufio.Writer, s string) {
 	const limit = 75
 	first := true
 	for len(s) > 0 {
-		max := limit
+		size := limit
 		if !first {
-			max = limit - 1 // пробел в начале строки продолжения
+			size = limit - 1 // пробел в начале строки продолжения
 		}
 		cut := len(s)
-		if cut > max {
-			cut = max
+		if cut > size {
+			cut = size
 			for cut > 0 && !isRuneStart(s[cut]) {
 				cut--
 			}
 		}
 		if !first {
-			w.WriteByte(' ')
+			_ = w.WriteByte(' ')
 		}
-		w.WriteString(s[:cut])
-		w.WriteString("\r\n")
+		_, _ = w.WriteString(s[:cut])
+		_, _ = w.WriteString("\r\n")
 		s = s[cut:]
 		first = false
 	}

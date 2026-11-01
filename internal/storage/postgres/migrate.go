@@ -14,8 +14,9 @@ import (
 
 // Migrate применяет все новые миграции. Вызывается при старте сервиса.
 func Migrate(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger) error {
+	// Закрытие *sql.DB не закрывает исходный пул.
 	db := stdlib.OpenDBFromPool(pool)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations.FS)
 	if err != nil {

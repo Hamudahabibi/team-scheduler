@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          args: --build-tags=integration
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Unit-тесты
+        run: go test -race -coverprofile=coverage.out ./...
+      - name: Покрытие
+        run: go tool cover -func=coverage.out | tail -1
+
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: scheduler
+          POSTGRES_PASSWORD: scheduler
+          POSTGRES_DB: scheduler
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scheduler"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://scheduler:scheduler@localhost:5432/scheduler?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Интеграционные тесты
+        run: go test -race -count=1 -tags=integration ./internal/storage/...
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Сборка образа
+        run: docker build -t team-scheduler .

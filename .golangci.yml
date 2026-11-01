@@ -1,0 +1,30 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gocritic
+    - nilerr
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - unparam
+  exclusions:
+    rules:
+      # В тестах допустимы упрощения: игнорирование ошибок вспомогательных вызовов и т. п.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unparam
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/Hamudahabibi/team-scheduler

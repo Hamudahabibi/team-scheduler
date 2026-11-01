@@ -31,7 +31,7 @@ func TestHealthAndReady(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := NewRouter(Deps{Log: testLogger(), DB: fakePinger{tt.dbErr}})
 			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tt.path, nil))
+			h.ServeHTTP(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, tt.path, nil))
 			if rec.Code != tt.status {
 				t.Fatalf("код %d, ожидался %d", rec.Code, tt.status)
 			}

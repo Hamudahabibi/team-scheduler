@@ -1,6 +1,7 @@
 package timegrid
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -53,7 +54,7 @@ func TestMaskOps(t *testing.T) {
 }
 
 func TestWeek(t *testing.T) {
-	if _, err := NewWeek(at(3, 0, 0), msk); err != ErrNotMonday {
+	if _, err := NewWeek(at(3, 0, 0), msk); !errors.Is(err, ErrNotMonday) {
 		t.Errorf("вторник принят за начало недели: %v", err)
 	}
 	w, err := NewWeek(at(2, 15, 45), msk)
