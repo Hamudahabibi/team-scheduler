@@ -14,6 +14,7 @@ import (
 
 	"github.com/Hamudahabibi/team-scheduler/internal/config"
 	"github.com/Hamudahabibi/team-scheduler/internal/httpapi"
+	"github.com/Hamudahabibi/team-scheduler/internal/scheduler"
 	"github.com/Hamudahabibi/team-scheduler/internal/service"
 	"github.com/Hamudahabibi/team-scheduler/internal/storage/postgres"
 )
@@ -65,6 +66,7 @@ func run() error {
 			Buffer:    classBuffer,
 			TimeLimit: cfg.SolverTimeLimit,
 		}),
+		Attendance: service.NewAttendance(store, scheduler.DefaultWeights().SubstituteWeight),
 	}
 
 	srv := &http.Server{

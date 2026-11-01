@@ -27,6 +27,7 @@ type Deps struct {
 	Academic     *service.Academic
 	Availability *service.Availability
 	Planning     *service.Planning
+	Attendance   *service.Attendance
 }
 
 type api struct {
@@ -94,6 +95,10 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET "+v1+"/me/schedule", a.authed(a.mySchedule))
 	mux.HandleFunc("POST "+v1+"/sessions/{id}/cancel", a.authed(a.cancelSession))
 	mux.HandleFunc("GET "+v1+"/teams/{id}/calendar.ics", a.authed(a.teamCalendar))
+
+	mux.HandleFunc("GET "+v1+"/sessions/{id}/attendance", a.authed(a.sessionAttendance))
+	mux.HandleFunc("PUT "+v1+"/sessions/{id}/attendance", a.authed(a.markAttendance))
+	mux.HandleFunc("GET "+v1+"/teams/{id}/stats", a.authed(a.teamStats))
 
 	var h http.Handler = mux
 	h = withRecover(h)
