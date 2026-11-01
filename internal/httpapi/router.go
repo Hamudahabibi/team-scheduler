@@ -17,10 +17,13 @@ type Pinger interface {
 
 // Deps — зависимости HTTP-слоя.
 type Deps struct {
-	Log   *slog.Logger
+	Log *slog.Logger
+	// Loc — часовой пояс киберцентра для разбора дат без смещения.
+	Loc   *time.Location
 	DB    Pinger
 	Auth  *service.Auth
 	Teams *service.Teams
+	Rooms *service.Rooms
 }
 
 type api struct {
@@ -55,6 +58,16 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("DELETE "+v1+"/teams/{id}/members/{userID}", a.authed(a.removeMember))
 	mux.HandleFunc("GET "+v1+"/teams/{id}/plan", a.authed(a.getPlan))
 	mux.HandleFunc("PUT "+v1+"/teams/{id}/plan", a.authed(a.setPlan))
+
+	mux.HandleFunc("GET "+v1+"/rooms", a.authed(a.listRooms))
+	mux.HandleFunc("POST "+v1+"/rooms", a.authed(a.createRoom))
+	mux.HandleFunc("GET "+v1+"/rooms/{id}", a.authed(a.getRoom))
+	mux.HandleFunc("PUT "+v1+"/rooms/{id}", a.authed(a.updateRoom))
+	mux.HandleFunc("DELETE "+v1+"/rooms/{id}", a.authed(a.deleteRoom))
+	mux.HandleFunc("PUT "+v1+"/rooms/{id}/hours", a.authed(a.setRoomHours))
+	mux.HandleFunc("GET "+v1+"/rooms/{id}/blocks", a.authed(a.listRoomBlocks))
+	mux.HandleFunc("POST "+v1+"/rooms/{id}/blocks", a.authed(a.addRoomBlock))
+	mux.HandleFunc("DELETE "+v1+"/rooms/{id}/blocks/{blockID}", a.authed(a.deleteRoomBlock))
 
 	var h http.Handler = mux
 	h = withRecover(h)
