@@ -1,0 +1,887 @@
+openapi: 3.1.0
+info:
+  title: team-scheduler API
+  version: 1.0.0
+  description: |
+    REST API системы автоматизации расписания тренировок киберспортивных команд.
+
+    Авторизация — заголовок `Authorization: Bearer <token>`, токен выдаёт `POST /auth/login`.
+    Время передаётся в RFC 3339, даты в query-параметрах — `YYYY-MM-DD` (полночь в часовом
+    поясе киберцентра). Время внутри дня (`*_min`) — минуты от полуночи, дни недели — 1 (пн) … 7 (вс).
+
+    Ошибки всегда имеют вид `{"error": {"code": "...", "message": "...", "field": "..."}}`.
+servers:
+  - url: http://localhost:8080/api/v1
+
+security:
+  - bearer: []
+
+tags:
+  - name: auth
+    description: Учётные записи
+  - name: teams
+    description: Команды, составы, тренировочные планы
+  - name: rooms
+    description: Залы киберцентра
+  - name: academic
+    description: Учебные группы и расписание пар
+  - name: availability
+    description: Доступность игроков
+  - name: schedule
+    description: Генерация и публикация расписания
+  - name: attendance
+    description: Посещаемость
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Регистрация игрока
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, full_name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8, maxLength: 72 }
+                full_name: { type: string }
+                group_code: { type: string, example: ИДБ-22-04 }
+      responses:
+        "201": { description: Создан, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Вход, выдача токена
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          description: Токен и пользователь
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Отзыв текущего токена
+      responses:
+        "204": { description: Токен отозван }
+
+  /me:
+    get:
+      tags: [auth]
+      summary: Текущий пользователь
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /me/group:
+    put:
+      tags: [auth]
+      summary: Сменить свою учебную группу
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                group_code: { type: string, description: Пустая строка отвязывает от группы }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+
+  /users:
+    get:
+      tags: [auth]
+      summary: Список пользователей (admin, coach)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/User" } } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /users/{id}/role:
+    put:
+      tags: [auth]
+      summary: Назначить роль (admin)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { $ref: "#/components/schemas/Role" }
+      responses:
+        "204": { description: Роль изменена }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /disciplines:
+    get:
+      tags: [teams]
+      summary: Справочник дисциплин
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Discipline" } } } } }
+
+  /teams:
+    get:
+      tags: [teams]
+      summary: Все команды
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Team" } } } } }
+    post:
+      tags: [teams]
+      summary: Создать команду (admin)
+      requestBody: { $ref: "#/components/requestBodies/Team" }
+      responses:
+        "201": { description: Создана, content: { application/json: { schema: { $ref: "#/components/schemas/Team" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /me/teams:
+    get:
+      tags: [teams]
+      summary: Команды текущего пользователя
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Team" } } } } }
+
+  /teams/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [teams]
+      summary: Команда с составом и планом
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Team" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [teams]
+      summary: Изменить команду (admin)
+      requestBody: { $ref: "#/components/requestBodies/Team" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Team" } } } }
+    delete:
+      tags: [teams]
+      summary: Удалить команду (admin)
+      responses:
+        "204": { description: Удалена }
+
+  /teams/{id}/members/{userID}:
+    parameters:
+      - { $ref: "#/components/parameters/ID" }
+      - { name: userID, in: path, required: true, schema: { type: integer, format: int64 } }
+    put:
+      tags: [teams]
+      summary: Добавить игрока в состав или изменить роль (admin, тренер команды)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [core, substitute] }
+                position: { type: string, example: jungle }
+      responses:
+        "204": { description: Сохранено }
+        "409": { description: Основной состав уже полный }
+    delete:
+      tags: [teams]
+      summary: Убрать игрока из состава (admin, тренер; игрок — сам себя)
+      responses:
+        "204": { description: Удалён }
+
+  /teams/{id}/plan:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [teams]
+      summary: Тренировочный план команды
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/TrainingPlan" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [teams]
+      summary: Сохранить тренировочный план (admin, тренер команды)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TrainingPlanInput" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/TrainingPlan" } } } }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /teams/{id}/heatmap:
+    get:
+      tags: [availability]
+      summary: Тепловая карта доступности команды на неделю
+      description: Доступна администратору, тренеру и игрокам команды.
+      parameters:
+        - { $ref: "#/components/parameters/ID" }
+        - { $ref: "#/components/parameters/Week" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  week_start: { type: string, format: date-time }
+                  core_total: { type: integer }
+                  members_total: { type: integer }
+                  core_free:
+                    description: "[день 0..6][слот 0..47] — свободно игроков основного состава"
+                    type: array
+                    items: { type: array, items: { type: integer } }
+                  all_free:
+                    type: array
+                    items: { type: array, items: { type: integer } }
+
+  /teams/{id}/calendar.ics:
+    get:
+      tags: [schedule]
+      summary: Тренировки команды в формате iCalendar
+      parameters:
+        - { $ref: "#/components/parameters/ID" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200":
+          description: Календарь
+          content:
+            text/calendar: { schema: { type: string } }
+
+  /teams/{id}/stats:
+    get:
+      tags: [attendance]
+      summary: Посещаемость команды за период
+      parameters:
+        - { $ref: "#/components/parameters/ID" }
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/TeamStats" } } } }
+
+  /rooms:
+    get:
+      tags: [rooms]
+      summary: Залы с часами работы
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Room" } } } } }
+    post:
+      tags: [rooms]
+      summary: Создать зал (admin)
+      requestBody: { $ref: "#/components/requestBodies/Room" }
+      responses:
+        "201": { description: Создан, content: { application/json: { schema: { $ref: "#/components/schemas/Room" } } } }
+
+  /rooms/{id}:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [rooms]
+      summary: Зал
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Room" } } } }
+    put:
+      tags: [rooms]
+      summary: Изменить зал (admin)
+      requestBody: { $ref: "#/components/requestBodies/Room" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Room" } } } }
+    delete:
+      tags: [rooms]
+      summary: Удалить зал (admin)
+      responses:
+        "204": { description: Удалён }
+
+  /rooms/{id}/hours:
+    put:
+      tags: [rooms]
+      summary: Заменить часы работы зала (admin)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: array, items: { $ref: "#/components/schemas/RoomHours" } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/Room" } } } }
+
+  /rooms/{id}/blocks:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [rooms]
+      summary: Блокировки зала за период
+      parameters:
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/RoomBlock" } } } } }
+    post:
+      tags: [rooms]
+      summary: Заблокировать зал на интервал (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [starts_at, ends_at]
+              properties:
+                starts_at: { type: string, format: date-time }
+                ends_at: { type: string, format: date-time }
+                reason: { type: string }
+      responses:
+        "201": { description: Создана, content: { application/json: { schema: { $ref: "#/components/schemas/RoomBlock" } } } }
+
+  /rooms/{id}/blocks/{blockID}:
+    delete:
+      tags: [rooms]
+      summary: Снять блокировку (admin)
+      parameters:
+        - { $ref: "#/components/parameters/ID" }
+        - { name: blockID, in: path, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        "204": { description: Удалена }
+
+  /groups:
+    get:
+      tags: [academic]
+      summary: Учебные группы
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/StudyGroup" } } } } }
+    post:
+      tags: [academic]
+      summary: Создать группу (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [code], properties: { code: { type: string } } }
+      responses:
+        "201": { description: Создана, content: { application/json: { schema: { $ref: "#/components/schemas/StudyGroup" } } } }
+
+  /groups/{id}/classes:
+    parameters:
+      - { $ref: "#/components/parameters/ID" }
+      - { $ref: "#/components/parameters/From" }
+      - { $ref: "#/components/parameters/To" }
+    get:
+      tags: [academic]
+      summary: Занятия группы за период
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ClassEvent" } } } } }
+    put:
+      tags: [academic]
+      summary: Импорт расписания группы (admin)
+      description: |
+        Заменяет занятия группы, начинающиеся в [from, to). Повторяющиеся события
+        iCalendar (RRULE) разворачиваются в конкретные занятия.
+      requestBody:
+        required: true
+        content:
+          text/calendar:
+            schema: { type: string }
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                required: [title, starts_at, ends_at]
+                properties:
+                  title: { type: string }
+                  starts_at: { type: string, format: date-time }
+                  ends_at: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Загружено
+          content:
+            application/json:
+              schema: { type: object, properties: { imported: { type: integer } } }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /me/availability:
+    get:
+      tags: [availability]
+      summary: Мои еженедельные правила доступности
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AvailabilityRule" } } } } }
+    put:
+      tags: [availability]
+      summary: Заменить мои правила доступности
+      description: Пустой массив — «свободен всегда, кроме пар».
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                required: [weekday, start_min, end_min, kind]
+                properties:
+                  weekday: { type: integer, minimum: 1, maximum: 7 }
+                  start_min: { type: integer }
+                  end_min: { type: integer }
+                  kind: { type: string, enum: [available, preferred] }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AvailabilityRule" } } } } }
+
+  /me/exceptions:
+    get:
+      tags: [availability]
+      summary: Мои исключения за период
+      parameters:
+        - { $ref: "#/components/parameters/From" }
+        - { $ref: "#/components/parameters/To" }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AvailabilityException" } } } } }
+    post:
+      tags: [availability]
+      summary: Добавить исключение
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [starts_at, ends_at, kind]
+              properties:
+                starts_at: { type: string, format: date-time }
+                ends_at: { type: string, format: date-time }
+                kind: { type: string, enum: [unavailable, available] }
+                note: { type: string }
+      responses:
+        "201": { description: Создано, content: { application/json: { schema: { $ref: "#/components/schemas/AvailabilityException" } } } }
+
+  /me/exceptions/{id}:
+    delete:
+      tags: [availability]
+      summary: Удалить исключение
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Удалено }
+
+  /me/week:
+    get:
+      tags: [availability]
+      summary: Моя итоговая доступность на неделю (как её видит планировщик)
+      parameters: [{ $ref: "#/components/parameters/Week" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  week_start: { type: string, format: date-time }
+                  free: { type: array, items: { $ref: "#/components/schemas/Interval" } }
+                  preferred: { type: array, items: { $ref: "#/components/schemas/Interval" } }
+                  classes: { type: array, items: { $ref: "#/components/schemas/Interval" } }
+
+  /me/schedule:
+    get:
+      tags: [schedule]
+      summary: Моя неделя — тренировки и пары
+      parameters: [{ $ref: "#/components/parameters/Week" }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  week_start: { type: string, format: date-time }
+                  trainings: { type: array, items: { $ref: "#/components/schemas/TrainingSession" } }
+                  classes: { type: array, items: { $ref: "#/components/schemas/ClassEvent" } }
+
+  /schedule:
+    get:
+      tags: [schedule]
+      summary: Опубликованное расписание недели
+      parameters:
+        - { $ref: "#/components/parameters/Week" }
+        - { name: team_id, in: query, schema: { type: integer, format: int64 } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/TrainingSession" } } } } }
+
+  /schedule/runs:
+    get:
+      tags: [schedule]
+      summary: Запуски генерации на неделю
+      parameters: [{ $ref: "#/components/parameters/Week" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/ScheduleRun" } } } } }
+    post:
+      tags: [schedule]
+      summary: Сгенерировать черновик расписания (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [week_start]
+              properties:
+                week_start: { type: string, format: date, description: Понедельник недели, example: "2026-11-09" }
+                algorithm: { type: string, enum: [greedy, bnb], default: greedy }
+                team_ids: { type: array, items: { type: integer, format: int64 }, description: Пусто — все команды }
+      responses:
+        "201": { description: Черновик, content: { application/json: { schema: { $ref: "#/components/schemas/ScheduleRun" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Validation" }
+
+  /schedule/runs/{id}:
+    get:
+      tags: [schedule]
+      summary: Запуск генерации с тренировками
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: "#/components/schemas/ScheduleRun" } } } }
+
+  /schedule/runs/{id}/publish:
+    post:
+      tags: [schedule]
+      summary: Опубликовать черновик (admin)
+      description: |
+        В одной транзакции: блокировка залов, отмена прежних тренировок команд запуска
+        на эту неделю, проверка вместимости и блокировок залов, публикация.
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "200": { description: Опубликовано, content: { application/json: { schema: { $ref: "#/components/schemas/ScheduleRun" } } } }
+        "409": { description: Черновик уже не черновик, не хватает мест или зал заблокирован }
+
+  /schedule/runs/{id}/discard:
+    post:
+      tags: [schedule]
+      summary: Отклонить черновик (admin)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Отклонён }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /sessions/{id}/cancel:
+    post:
+      tags: [schedule]
+      summary: Отменить тренировку (admin, тренер команды)
+      parameters: [{ $ref: "#/components/parameters/ID" }]
+      responses:
+        "204": { description: Отменена }
+
+  /sessions/{id}/attendance:
+    parameters: [{ $ref: "#/components/parameters/ID" }]
+    get:
+      tags: [attendance]
+      summary: Отметки тренировки
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AttendanceMark" } } } } }
+    put:
+      tags: [attendance]
+      summary: Отметить посещаемость (admin, тренер команды; после начала тренировки)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                required: [user_id, status]
+                properties:
+                  user_id: { type: integer, format: int64 }
+                  status: { type: string, enum: [present, late, absent, excused] }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/AttendanceMark" } } } } }
+        "409": { description: Тренировка не опубликована или ещё не началась }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+
+  parameters:
+    ID: { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+    Week: { name: week, in: query, required: true, description: Понедельник недели, schema: { type: string, format: date } }
+    From: { name: from, in: query, required: true, description: Дата или RFC 3339, schema: { type: string } }
+    To: { name: to, in: query, required: true, description: Дата или RFC 3339, schema: { type: string } }
+
+  requestBodies:
+    Team:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [name, discipline_id]
+            properties:
+              name: { type: string }
+              discipline_id: { type: integer, format: int64 }
+              coach_id: { type: [integer, "null"], format: int64 }
+    Room:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [name, seats]
+            properties:
+              name: { type: string }
+              seats: { type: integer, minimum: 1 }
+
+  responses:
+    Unauthorized: { description: Нет токена или он недействителен, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Forbidden: { description: Недостаточно прав, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    NotFound: { description: Не найдено, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Conflict: { description: Конфликт, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    Validation: { description: Некорректные данные, content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, enum: [validation, not_found, conflict, forbidden, unauthorized, internal] }
+            message: { type: string }
+            field: { type: string }
+
+    Role: { type: string, enum: [admin, coach, player] }
+
+    User:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        email: { type: string }
+        full_name: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        study_group_id: { type: [integer, "null"], format: int64 }
+        created_at: { type: string, format: date-time }
+
+    StudyGroup:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        code: { type: string }
+
+    ClassEvent:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        group_id: { type: integer, format: int64 }
+        title: { type: string }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+
+    Discipline:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        code: { type: string }
+        name: { type: string }
+        roster_size: { type: integer }
+
+    TeamMember:
+      type: object
+      properties:
+        team_id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        full_name: { type: string }
+        study_group_id: { type: [integer, "null"], format: int64 }
+        role: { type: string, enum: [core, substitute] }
+        position: { type: string }
+        joined_at: { type: string, format: date-time }
+
+    TrainingPlanInput:
+      type: object
+      required: [sessions_per_week, duration_min, min_core_players, day_start_min, day_end_min]
+      properties:
+        sessions_per_week: { type: integer, minimum: 1, maximum: 7 }
+        duration_min: { type: integer, minimum: 30, maximum: 480, multipleOf: 30 }
+        min_core_players: { type: integer, minimum: 1 }
+        day_start_min: { type: integer, multipleOf: 30 }
+        day_end_min: { type: integer, multipleOf: 30, maximum: 1440 }
+        min_rest_min: { type: integer, minimum: 0 }
+        priority: { type: integer, minimum: 1, maximum: 10, default: 1 }
+
+    TrainingPlan:
+      allOf:
+        - $ref: "#/components/schemas/TrainingPlanInput"
+        - type: object
+          properties:
+            team_id: { type: integer, format: int64 }
+            updated_at: { type: string, format: date-time }
+
+    Team:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        discipline_id: { type: integer, format: int64 }
+        coach_id: { type: [integer, "null"], format: int64 }
+        created_at: { type: string, format: date-time }
+        members: { type: array, items: { $ref: "#/components/schemas/TeamMember" } }
+        plan: { $ref: "#/components/schemas/TrainingPlan" }
+
+    RoomHours:
+      type: object
+      required: [weekday, open_min, close_min]
+      properties:
+        weekday: { type: integer, minimum: 1, maximum: 7 }
+        open_min: { type: integer }
+        close_min: { type: integer }
+
+    Room:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        seats: { type: integer }
+        hours: { type: array, items: { $ref: "#/components/schemas/RoomHours" } }
+
+    RoomBlock:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        room_id: { type: integer, format: int64 }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        reason: { type: string }
+
+    AvailabilityRule:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        weekday: { type: integer }
+        start_min: { type: integer }
+        end_min: { type: integer }
+        kind: { type: string, enum: [available, preferred] }
+
+    AvailabilityException:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        kind: { type: string, enum: [unavailable, available] }
+        note: { type: string }
+
+    Interval:
+      type: object
+      properties:
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+
+    TrainingSession:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        run_id: { type: [integer, "null"], format: int64 }
+        team_id: { type: integer, format: int64 }
+        team_name: { type: string }
+        room_id: { type: integer, format: int64 }
+        room_name: { type: string }
+        starts_at: { type: string, format: date-time }
+        ends_at: { type: string, format: date-time }
+        seats: { type: integer }
+        status: { type: string, enum: [draft, published, cancelled] }
+        quality: { type: number, description: Качество времени по целевой функции }
+        expected_attendance: { type: number, description: Прогноз посещаемости 0..1 }
+
+    Shortfall:
+      type: object
+      properties:
+        team_id: { type: integer, format: int64 }
+        requested: { type: integer }
+        scheduled: { type: integer }
+        reason: { type: string }
+
+    ScheduleRun:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        week_start: { type: string, format: date-time }
+        algorithm: { type: string, enum: [greedy, bnb] }
+        status: { type: string, enum: [draft, published, discarded] }
+        objective: { type: number }
+        team_ids: { type: array, items: { type: integer, format: int64 } }
+        created_by: { type: [integer, "null"], format: int64 }
+        created_at: { type: string, format: date-time }
+        published_at: { type: [string, "null"], format: date-time }
+        stats:
+          type: object
+          properties:
+            algorithm: { type: string }
+            requested: { type: integer }
+            scheduled: { type: integer }
+            objective: { type: number }
+            avg_attendance: { type: number }
+            candidates: { type: integer }
+            nodes: { type: integer }
+            optimal: { type: boolean, description: Метод ветвей и границ доказал оптимальность }
+            elapsed_ns: { type: integer }
+            shortfalls: { type: array, items: { $ref: "#/components/schemas/Shortfall" } }
+            skipped: { type: array, items: { $ref: "#/components/schemas/Shortfall" } }
+        sessions: { type: array, items: { $ref: "#/components/schemas/TrainingSession" } }
+
+    AttendanceMark:
+      type: object
+      properties:
+        session_id: { type: integer, format: int64 }
+        user_id: { type: integer, format: int64 }
+        full_name: { type: string }
+        status: { type: string, enum: [present, late, absent, excused] }
+        marked_by: { type: [integer, "null"], format: int64 }
+        marked_at: { type: string, format: date-time }
+
+    TeamStats:
+      type: object
+      properties:
+        team_id: { type: integer, format: int64 }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        sessions: { type: integer }
+        marked: { type: integer }
+        avg_expected: { type: number, description: Средний прогноз планировщика }
+        avg_actual: { type: number, description: Средняя фактическая посещаемость }
+        players:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id: { type: integer, format: int64 }
+              full_name: { type: string }
+              role: { type: string }
+              marked: { type: integer }
+              present: { type: integer }
+              late: { type: integer }
+              absent: { type: integer }
+              excused: { type: integer }
+              rate: { type: number }
