@@ -58,6 +58,8 @@ func run() error {
 		Teams:    service.NewTeams(store),
 		Rooms:    service.NewRooms(store),
 		Academic: service.NewAcademic(store, cfg.Timezone),
+		Availability: service.NewAvailability(store, cfg.Timezone,
+			time.Duration(cfg.ClassBufferMin)*time.Minute),
 	}
 
 	srv := &http.Server{

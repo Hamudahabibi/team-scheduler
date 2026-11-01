@@ -19,12 +19,13 @@ type Pinger interface {
 type Deps struct {
 	Log *slog.Logger
 	// Loc — часовой пояс киберцентра для разбора дат без смещения.
-	Loc      *time.Location
-	DB       Pinger
-	Auth     *service.Auth
-	Teams    *service.Teams
-	Rooms    *service.Rooms
-	Academic *service.Academic
+	Loc          *time.Location
+	DB           Pinger
+	Auth         *service.Auth
+	Teams        *service.Teams
+	Rooms        *service.Rooms
+	Academic     *service.Academic
+	Availability *service.Availability
 }
 
 type api struct {
@@ -74,6 +75,14 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("POST "+v1+"/groups", a.authed(a.createGroup))
 	mux.HandleFunc("GET "+v1+"/groups/{id}/classes", a.authed(a.listClasses))
 	mux.HandleFunc("PUT "+v1+"/groups/{id}/classes", a.authed(a.importClasses))
+
+	mux.HandleFunc("GET "+v1+"/me/availability", a.authed(a.myRules))
+	mux.HandleFunc("PUT "+v1+"/me/availability", a.authed(a.setMyRules))
+	mux.HandleFunc("GET "+v1+"/me/exceptions", a.authed(a.myExceptions))
+	mux.HandleFunc("POST "+v1+"/me/exceptions", a.authed(a.addMyException))
+	mux.HandleFunc("DELETE "+v1+"/me/exceptions/{id}", a.authed(a.deleteMyException))
+	mux.HandleFunc("GET "+v1+"/me/week", a.authed(a.myWeek))
+	mux.HandleFunc("GET "+v1+"/teams/{id}/heatmap", a.authed(a.teamHeatmap))
 
 	var h http.Handler = mux
 	h = withRecover(h)
