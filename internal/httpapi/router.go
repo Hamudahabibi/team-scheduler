@@ -26,6 +26,7 @@ type Deps struct {
 	Rooms        *service.Rooms
 	Academic     *service.Academic
 	Availability *service.Availability
+	Planning     *service.Planning
 }
 
 type api struct {
@@ -83,6 +84,16 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("DELETE "+v1+"/me/exceptions/{id}", a.authed(a.deleteMyException))
 	mux.HandleFunc("GET "+v1+"/me/week", a.authed(a.myWeek))
 	mux.HandleFunc("GET "+v1+"/teams/{id}/heatmap", a.authed(a.teamHeatmap))
+
+	mux.HandleFunc("POST "+v1+"/schedule/runs", a.authed(a.generateRun))
+	mux.HandleFunc("GET "+v1+"/schedule/runs", a.authed(a.listRuns))
+	mux.HandleFunc("GET "+v1+"/schedule/runs/{id}", a.authed(a.getRun))
+	mux.HandleFunc("POST "+v1+"/schedule/runs/{id}/publish", a.authed(a.publishRun))
+	mux.HandleFunc("POST "+v1+"/schedule/runs/{id}/discard", a.authed(a.discardRun))
+	mux.HandleFunc("GET "+v1+"/schedule", a.authed(a.weekSchedule))
+	mux.HandleFunc("GET "+v1+"/me/schedule", a.authed(a.mySchedule))
+	mux.HandleFunc("POST "+v1+"/sessions/{id}/cancel", a.authed(a.cancelSession))
+	mux.HandleFunc("GET "+v1+"/teams/{id}/calendar.ics", a.authed(a.teamCalendar))
 
 	var h http.Handler = mux
 	h = withRecover(h)

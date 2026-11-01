@@ -50,16 +50,21 @@ func run() error {
 	store := postgres.NewStore(pool)
 	go cleanupTokens(ctx, store, log)
 
+	classBuffer := time.Duration(cfg.ClassBufferMin) * time.Minute
 	deps := httpapi.Deps{
-		Log:      log,
-		Loc:      cfg.Timezone,
-		DB:       store,
-		Auth:     service.NewAuth(store, cfg.TokenTTL, cfg.AdminEmail),
-		Teams:    service.NewTeams(store),
-		Rooms:    service.NewRooms(store),
-		Academic: service.NewAcademic(store, cfg.Timezone),
-		Availability: service.NewAvailability(store, cfg.Timezone,
-			time.Duration(cfg.ClassBufferMin)*time.Minute),
+		Log:          log,
+		Loc:          cfg.Timezone,
+		DB:           store,
+		Auth:         service.NewAuth(store, cfg.TokenTTL, cfg.AdminEmail),
+		Teams:        service.NewTeams(store),
+		Rooms:        service.NewRooms(store),
+		Academic:     service.NewAcademic(store, cfg.Timezone),
+		Availability: service.NewAvailability(store, cfg.Timezone, classBuffer),
+		Planning: service.NewPlanning(store, service.PlanningConfig{
+			Loc:       cfg.Timezone,
+			Buffer:    classBuffer,
+			TimeLimit: cfg.SolverTimeLimit,
+		}),
 	}
 
 	srv := &http.Server{
