@@ -42,6 +42,10 @@ func run() error {
 	}
 	defer pool.Close()
 
+	if err := postgres.Migrate(ctx, pool, log); err != nil {
+		return err
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
 		Handler:           httpapi.NewRouter(httpapi.Deps{Log: log, DB: pool}),
