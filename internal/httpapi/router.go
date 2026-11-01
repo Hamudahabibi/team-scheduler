@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/Hamudahabibi/team-scheduler/internal/service"
 )
 
 // Pinger проверяет доступность хранилища для /readyz.
@@ -15,8 +17,9 @@ type Pinger interface {
 
 // Deps — зависимости HTTP-слоя.
 type Deps struct {
-	Log *slog.Logger
-	DB  Pinger
+	Log  *slog.Logger
+	DB   Pinger
+	Auth *service.Auth
 }
 
 type api struct {
@@ -30,6 +33,15 @@ func NewRouter(d Deps) http.Handler {
 
 	mux.HandleFunc("GET /healthz", a.healthz)
 	mux.HandleFunc("GET /readyz", a.readyz)
+
+	const v1 = "/api/v1"
+	mux.HandleFunc("POST "+v1+"/auth/register", a.register)
+	mux.HandleFunc("POST "+v1+"/auth/login", a.login)
+	mux.HandleFunc("POST "+v1+"/auth/logout", a.authed(a.logout))
+	mux.HandleFunc("GET "+v1+"/me", a.authed(a.me))
+	mux.HandleFunc("PUT "+v1+"/me/group", a.authed(a.setMyGroup))
+	mux.HandleFunc("GET "+v1+"/users", a.authed(a.listUsers))
+	mux.HandleFunc("PUT "+v1+"/users/{id}/role", a.authed(a.setUserRole))
 
 	var h http.Handler = mux
 	h = withRecover(h)

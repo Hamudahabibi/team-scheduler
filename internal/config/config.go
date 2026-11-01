@@ -21,6 +21,8 @@ type Config struct {
 	ClassBufferMin int
 	// SolverTimeLimit — лимит времени метода ветвей и границ.
 	SolverTimeLimit time.Duration
+	// AdminEmail — пользователь с этим e-mail при регистрации получает роль admin.
+	AdminEmail string
 }
 
 // Load читает конфигурацию из окружения и проверяет её.
@@ -31,6 +33,7 @@ func Load() (Config, error) {
 		HTTPAddr:    getEnv("HTTP_ADDR", ":8080"),
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		LogLevel:    getEnv("LOG_LEVEL", "info"),
+		AdminEmail:  os.Getenv("BOOTSTRAP_ADMIN_EMAIL"),
 	}
 
 	if cfg.DatabaseURL == "" {

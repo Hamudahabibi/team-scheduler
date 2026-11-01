@@ -14,6 +14,7 @@ import (
 
 	"github.com/Hamudahabibi/team-scheduler/internal/config"
 	"github.com/Hamudahabibi/team-scheduler/internal/httpapi"
+	"github.com/Hamudahabibi/team-scheduler/internal/service"
 	"github.com/Hamudahabibi/team-scheduler/internal/storage/postgres"
 )
 
@@ -46,9 +47,18 @@ func run() error {
 		return err
 	}
 
+	store := postgres.NewStore(pool)
+	go cleanupTokens(ctx, store, log)
+
+	deps := httpapi.Deps{
+		Log:  log,
+		DB:   store,
+		Auth: service.NewAuth(store, cfg.TokenTTL, cfg.AdminEmail),
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpapi.NewRouter(httpapi.Deps{Log: log, DB: pool}),
+		Handler:           httpapi.NewRouter(deps),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -77,6 +87,25 @@ func run() error {
 		return fmt.Errorf("остановка HTTP-сервера: %w", err)
 	}
 	return nil
+}
+
+// cleanupTokens раз в час удаляет истёкшие токены доступа.
+func cleanupTokens(ctx context.Context, store *postgres.Store, log *slog.Logger) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		n, err := store.DeleteExpiredTokens(ctx, time.Now())
+		if err != nil && ctx.Err() == nil {
+			log.Warn("очистка токенов", slog.Any("err", err))
+		} else if n > 0 {
+			log.Info("удалены истёкшие токены", slog.Int64("count", n))
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 func newLogger(level string) *slog.Logger {
