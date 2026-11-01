@@ -51,12 +51,13 @@ func run() error {
 	go cleanupTokens(ctx, store, log)
 
 	deps := httpapi.Deps{
-		Log:   log,
-		Loc:   cfg.Timezone,
-		DB:    store,
-		Auth:  service.NewAuth(store, cfg.TokenTTL, cfg.AdminEmail),
-		Teams: service.NewTeams(store),
-		Rooms: service.NewRooms(store),
+		Log:      log,
+		Loc:      cfg.Timezone,
+		DB:       store,
+		Auth:     service.NewAuth(store, cfg.TokenTTL, cfg.AdminEmail),
+		Teams:    service.NewTeams(store),
+		Rooms:    service.NewRooms(store),
+		Academic: service.NewAcademic(store, cfg.Timezone),
 	}
 
 	srv := &http.Server{

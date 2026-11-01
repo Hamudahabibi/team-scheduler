@@ -19,11 +19,12 @@ type Pinger interface {
 type Deps struct {
 	Log *slog.Logger
 	// Loc — часовой пояс киберцентра для разбора дат без смещения.
-	Loc   *time.Location
-	DB    Pinger
-	Auth  *service.Auth
-	Teams *service.Teams
-	Rooms *service.Rooms
+	Loc      *time.Location
+	DB       Pinger
+	Auth     *service.Auth
+	Teams    *service.Teams
+	Rooms    *service.Rooms
+	Academic *service.Academic
 }
 
 type api struct {
@@ -68,6 +69,11 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("GET "+v1+"/rooms/{id}/blocks", a.authed(a.listRoomBlocks))
 	mux.HandleFunc("POST "+v1+"/rooms/{id}/blocks", a.authed(a.addRoomBlock))
 	mux.HandleFunc("DELETE "+v1+"/rooms/{id}/blocks/{blockID}", a.authed(a.deleteRoomBlock))
+
+	mux.HandleFunc("GET "+v1+"/groups", a.authed(a.listGroups))
+	mux.HandleFunc("POST "+v1+"/groups", a.authed(a.createGroup))
+	mux.HandleFunc("GET "+v1+"/groups/{id}/classes", a.authed(a.listClasses))
+	mux.HandleFunc("PUT "+v1+"/groups/{id}/classes", a.authed(a.importClasses))
 
 	var h http.Handler = mux
 	h = withRecover(h)
