@@ -11,7 +11,7 @@ import (
 
 // ListGroups возвращает учебные группы по алфавиту.
 func (s *Store) ListGroups(ctx context.Context) ([]domain.StudyGroup, error) {
-	rows, err := s.q.Query(ctx, `SELECT id, code FROM study_groups ORDER BY code`)
+	rows, err := s.db(ctx).Query(ctx, `SELECT id, code FROM study_groups ORDER BY code`)
 	if err != nil {
 		return nil, mapErr(err, "учебные группы")
 	}
@@ -26,31 +26,31 @@ func (s *Store) ListGroups(ctx context.Context) ([]domain.StudyGroup, error) {
 // CreateGroup создаёт учебную группу. Повтор кода — конфликт.
 func (s *Store) CreateGroup(ctx context.Context, code string) (domain.StudyGroup, error) {
 	g := domain.StudyGroup{Code: code}
-	err := s.q.QueryRow(ctx, `INSERT INTO study_groups (code) VALUES ($1) RETURNING id`, code).Scan(&g.ID)
+	err := s.db(ctx).QueryRow(ctx, `INSERT INTO study_groups (code) VALUES ($1) RETURNING id`, code).Scan(&g.ID)
 	return g, mapErr(err, "учебная группа")
 }
 
 // GroupByID возвращает учебную группу.
 func (s *Store) GroupByID(ctx context.Context, id int64) (domain.StudyGroup, error) {
 	var g domain.StudyGroup
-	err := s.q.QueryRow(ctx, `SELECT id, code FROM study_groups WHERE id = $1`, id).Scan(&g.ID, &g.Code)
+	err := s.db(ctx).QueryRow(ctx, `SELECT id, code FROM study_groups WHERE id = $1`, id).Scan(&g.ID, &g.Code)
 	return g, mapErr(err, "учебная группа")
 }
 
 // ReplaceClasses атомарно заменяет занятия группы, начинающиеся в [from, to).
 // Повторный импорт того же периода не создаёт дублей.
 func (s *Store) ReplaceClasses(ctx context.Context, groupID int64, from, to time.Time, classes []domain.ClassEvent) error {
-	return s.InTx(ctx, func(tx *Store) error {
+	return s.InTx(ctx, func(ctx context.Context) error {
 		var id int64
-		if err := tx.q.QueryRow(ctx, `SELECT id FROM study_groups WHERE id = $1 FOR UPDATE`, groupID).Scan(&id); err != nil {
+		if err := s.db(ctx).QueryRow(ctx, `SELECT id FROM study_groups WHERE id = $1 FOR UPDATE`, groupID).Scan(&id); err != nil {
 			return mapErr(err, "учебная группа")
 		}
-		if _, err := tx.q.Exec(ctx,
+		if _, err := s.db(ctx).Exec(ctx,
 			`DELETE FROM class_events WHERE group_id = $1 AND starts_at >= $2 AND starts_at < $3`,
 			groupID, from, to); err != nil {
 			return mapErr(err, "занятия")
 		}
-		_, err := tx.q.CopyFrom(ctx, pgx.Identifier{"class_events"},
+		_, err := s.db(ctx).CopyFrom(ctx, pgx.Identifier{"class_events"},
 			[]string{"group_id", "title", "starts_at", "ends_at"},
 			pgx.CopyFromSlice(len(classes), func(i int) ([]any, error) {
 				c := classes[i]
@@ -62,7 +62,7 @@ func (s *Store) ReplaceClasses(ctx context.Context, groupID int64, from, to time
 
 // ClassesByGroups возвращает занятия групп, пересекающие [from, to).
 func (s *Store) ClassesByGroups(ctx context.Context, groupIDs []int64, from, to time.Time) ([]domain.ClassEvent, error) {
-	rows, err := s.q.Query(ctx, `
+	rows, err := s.db(ctx).Query(ctx, `
 		SELECT id, group_id, title, starts_at, ends_at FROM class_events
 		WHERE group_id = ANY($1) AND starts_at < $3 AND ends_at > $2
 		ORDER BY starts_at, id`, groupIDs, from, to)

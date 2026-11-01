@@ -20,26 +20,38 @@ type querier interface {
 	CopyFrom(ctx context.Context, table pgx.Identifier, columns []string, src pgx.CopyFromSource) (int64, error)
 }
 
-// Store — репозиторий всех сущностей. Один и тот же тип работает
-// и поверх пула, и внутри транзакции (см. InTx).
+// Store — репозиторий всех сущностей.
+//
+// Транзакция передаётся через контекст: InTx кладёт pgx.Tx в ctx, и все
+// методы, вызванные с этим ctx, выполняются в ней. Так сервисный слой
+// управляет границами транзакции, не завися от pgx.
 type Store struct {
 	pool *pgxpool.Pool
-	q    querier
 }
+
+type txKey struct{}
 
 // NewStore создаёт хранилище поверх пула соединений.
 func NewStore(pool *pgxpool.Pool) *Store {
-	return &Store{pool: pool, q: pool}
+	return &Store{pool: pool}
+}
+
+// db возвращает текущую транзакцию из контекста или пул.
+func (s *Store) db(ctx context.Context) querier {
+	if tx, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
+		return tx
+	}
+	return s.pool
 }
 
 // Ping проверяет соединение с БД.
 func (s *Store) Ping(ctx context.Context) error { return s.pool.Ping(ctx) }
 
 // InTx выполняет fn в транзакции. Если fn вернула ошибку, транзакция
-// откатывается. Вложенный вызов переиспользует текущую транзакцию.
-func (s *Store) InTx(ctx context.Context, fn func(tx *Store) error) error {
-	if _, ok := s.q.(pgx.Tx); ok {
-		return fn(s)
+// откатывается. Вложенный вызов переиспользует внешнюю транзакцию.
+func (s *Store) InTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	if _, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
+		return fn(ctx)
 	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -47,7 +59,7 @@ func (s *Store) InTx(ctx context.Context, fn func(tx *Store) error) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if err := fn(&Store{pool: s.pool, q: tx}); err != nil {
+	if err := fn(context.WithValue(ctx, txKey{}, tx)); err != nil {
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
