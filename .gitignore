@@ -1,0 +1,18 @@
+# Бинарники
+/bin/
+*.exe
+*.test
+*.out
+
+# Покрытие и профили
+coverage.*
+*.prof
+
+# Локальное окружение
+.env
+.env.local
+
+# IDE и ОС
+.idea/
+.vscode/
+.DS_Store
