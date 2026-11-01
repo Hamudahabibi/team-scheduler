@@ -17,9 +17,10 @@ type Pinger interface {
 
 // Deps — зависимости HTTP-слоя.
 type Deps struct {
-	Log  *slog.Logger
-	DB   Pinger
-	Auth *service.Auth
+	Log   *slog.Logger
+	DB    Pinger
+	Auth  *service.Auth
+	Teams *service.Teams
 }
 
 type api struct {
@@ -42,6 +43,18 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("PUT "+v1+"/me/group", a.authed(a.setMyGroup))
 	mux.HandleFunc("GET "+v1+"/users", a.authed(a.listUsers))
 	mux.HandleFunc("PUT "+v1+"/users/{id}/role", a.authed(a.setUserRole))
+
+	mux.HandleFunc("GET "+v1+"/disciplines", a.authed(a.listDisciplines))
+	mux.HandleFunc("GET "+v1+"/teams", a.authed(a.listTeams))
+	mux.HandleFunc("POST "+v1+"/teams", a.authed(a.createTeam))
+	mux.HandleFunc("GET "+v1+"/me/teams", a.authed(a.myTeams))
+	mux.HandleFunc("GET "+v1+"/teams/{id}", a.authed(a.getTeam))
+	mux.HandleFunc("PUT "+v1+"/teams/{id}", a.authed(a.updateTeam))
+	mux.HandleFunc("DELETE "+v1+"/teams/{id}", a.authed(a.deleteTeam))
+	mux.HandleFunc("PUT "+v1+"/teams/{id}/members/{userID}", a.authed(a.setMember))
+	mux.HandleFunc("DELETE "+v1+"/teams/{id}/members/{userID}", a.authed(a.removeMember))
+	mux.HandleFunc("GET "+v1+"/teams/{id}/plan", a.authed(a.getPlan))
+	mux.HandleFunc("PUT "+v1+"/teams/{id}/plan", a.authed(a.setPlan))
 
 	var h http.Handler = mux
 	h = withRecover(h)

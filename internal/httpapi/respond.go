@@ -34,6 +34,19 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// respond отдаёт v со статусом status или ошибку, если она есть.
+func respond(w http.ResponseWriter, r *http.Request, status int, v any, err error) {
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	if status == http.StatusNoContent {
+		w.WriteHeader(status)
+		return
+	}
+	writeJSON(w, status, v)
+}
+
 // writeError переводит доменную ошибку в HTTP-ответ. Неизвестные ошибки
 // логируются, клиент получает 500 без подробностей.
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
