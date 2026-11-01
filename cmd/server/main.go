@@ -35,6 +35,10 @@ func run() error {
 	log := newLogger(cfg.LogLevel)
 	slog.SetDefault(log)
 
+	// pgx возвращает timestamptz в локальном поясе процесса. В контейнере это UTC,
+	// а клиентам удобнее время киберцентра: «18:00+03:00», а не «15:00Z».
+	time.Local = cfg.Timezone
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

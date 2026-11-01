@@ -22,6 +22,7 @@ services:
       HTTP_ADDR: ":8080"
       TIMEZONE: Europe/Moscow
       LOG_LEVEL: info
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
     ports:
       - "8080:8080"
     depends_on:
